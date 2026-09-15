@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pet Wearable Bridge</title>
+    <!-- Fallback to a stable, locked version of the MQTT library -->
+    <script src="https://unpkg.com"></script>
+</head>
+<body style="font-family: Arial, sans-serif; margin: 30px; background-color: #fafafa; color: #333;">
+    <div style="max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+        <h2 style="color: #007bff; margin-top: 0;">Pet Wearable Web-BLE Gateway</h2>
+        <p style="font-size: 14px; color: #666;">This page securely pipes your XIAO's real-time Bluetooth parameters directly up to your Adafruit IO charts over internet sockets.</p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 20px;">
+
+        <label style="font-weight: bold; font-size: 14px;">Adafruit IO Username:</label><br>
+        <input type="text" id="username" placeholder="e.g., adafruit_user_123" style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;"><br>
+        
+        <label style="font-weight: bold; font-size: 14px;">Adafruit IO AIO Key:</label><br>
+        <input type="password" id="aiokey" placeholder="aio_ABC123xyz..." style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;"><br>
+        
+        <button id="connectBle" style="width: 100%; padding: 12px; font-weight: bold; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+            Pair Bluetooth & Start Sync
+        </button>
+        
+        <h4 style="margin-bottom: 5px; margin-top: 25px;">Connection Logs:</h4>
+        <p id="status" style="font-weight: bold; color: #ff9900; margin-top: 5px;">Status: Awaiting input parameters.</p>
+        <div id="log" style="background: #222; color: #00ff00; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; font-size: 12px; height: 180px; overflow-y: auto;">System ready...</div>
+    </div>
+
+    <script>
+        let mqttClient = null;
+        const NORDIC_UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const UART_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+        function updateLog(msg) {
+            const logBox = document.getElementById('log');
+            logBox.innerText = `[${new Date().toLocaleTimeString()}] ${msg}\n` + logBox.innerText;
+        }
+
+        // Test if browser supports Bluetooth at all
+        if (!navigator.bluetooth) {
+            document.getElementById('status').innerText = "CRITICAL ERROR: Browser Security Blocked!";
+            document.getElementById('status').style.color = "red";
+            updateLog("ERROR: Web Bluetooth is blocked. You MUST run this file from a local server environment (like http://localhost or http://127.0.0.1) instead of double-clicking the file.");
+        }
+
+        document.getElementById('connectBle').addEventListener('click', async () => {
+            const user = document.getElementById('username').value.trim();
+            const key = document.getElementById('aiokey').value.trim();
+            
+            if(!user || !key) {
+                alert("Please fill in both your Adafruit IO username and AIO secret key.");
+                return;
+            }
+
+            document.getElementById('status').innerText = "Connecting to Adafruit IO Broker...";
+            document.getElementById('status').style.color = "#ff9900";
+            updateLog(`Attempting WebSocket handshake with wss://io.adafruit.com...`);
+            
+            try {
+                mqttClient = mqtt.connect(`wss://://adafruit.com`, {
+                    username: user,
+                    password: key,
+                    connectTimeout: 5000
+                });
+
+                mqttClient.on('error', (err) => {
+                    document.getElementById('status').innerText = "MQTT Connection Failed";
+                    document.getElementById('status').style.color = "red";
+                    updateLog(`MQTT Error: ${err.message}. Double-check your AIO Key or credentials.`);
+                });
+
+                mqttClient.on('connect', async () => {
+                    document.getElementById('status').innerText = "MQTT Online! Prompting for Bluetooth device pairing...";
+                    document.getElementById('status').style.color = "blue";
+                    updateLog("Successfully authenticated with Adafruit IO. Looking for your XIAO BLE module...");
+                    
+                    try {
+                        updateLog("Opening native hardware pairing selector. Please pick your device from the Chrome prompt window...");
+                        const device = await navigator.bluetooth.requestDevice({
+                            filters: [{ namePrefix: 'XIAO' }, { services: [NORDIC_UART_SERVICE_UUID] }],
+                            optionalServices: [NORDIC_UART_SERVICE_UUID]
+                        });
+
+                        updateLog(`Paired with: ${device.name}. Initializing GATT profile connection...`);
+                        const server = await device.gatt.connect();
+                        
+                        updateLog("Discovering Nordic UART Service protocols...");
+                        const service = await server.getPrimaryService(NORDIC_UART_SERVICE_UUID);
+                        const characteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+                        
+                        document.getElementById('status').innerText = "ACTIVE SYNC PIPELINE ONLINE";
+                        document.getElementById('status').style.color = "green";
+                        updateLog("System complete! Standard notifications listening. Relaying metrics to Cloud feeds every 5s...");
+                        
+                        let decoder = new TextDecoder();
+                        let bufferString = "";
+
+                        await characteristic.startNotifications();
+                        characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                            let chunk = decoder.decode(event.target.value);
+                            bufferString += chunk;
+                            
+                            if (bufferString.includes('\n')) {
+                                let lines = bufferString.split('\n');
+                                let completeLine = lines[0].trim();
+                                bufferString = lines.slice(1).join('\n');
+                                
+                                if(completeLine) {
+                                    updateLog(`Payload Captured: "${completeLine}"`);
+                                    
+                                    // Parse incoming structural format: "3200,1.2,IDLE"
+                                    let items = completeLine.split(',');
+                                    if(items.length === 3) {
+                                        let voltage = items[0].trim();
+                                        let rate = items[1].trim();
+                                        let activity = items[2].trim();
+
+                                        // Pipe data straight to the specific feed paths on your cloud dashboard
+                                        mqttClient.publish(`${user}/feeds/pet-voltage`, voltage);
+                                        mqttClient.publish(`${user}/feeds/pet-rate`, rate);
+                                        mqttClient.publish(`${user}/feeds/pet-activity`, activity);
+                                        updateLog(`Relayed variables -> Volt: ${voltage}mV | Rate: ${rate}mV/s | State: ${activity}`);
+                                    } else {
+                                        updateLog(`Data warning: Received an unparseable string fragment.`);
+                                    }
+                                }
+                            }
+                        });
+
+                    } catch (bleErr) {
+                        document.getElementById('status').innerText = "Bluetooth Setup Halted";
+                        document.getElementById('status').style.color = "red";
+                        updateLog(`Bluetooth Error: ${bleErr.message}`);
+                    }
+                });
+
+            } catch (err) {
+                updateLog(`General Thread Failure: ${err.message}`);
+            }
+        });
+    </script>
+</body>
+</html>
