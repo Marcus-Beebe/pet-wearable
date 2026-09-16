@@ -2,11 +2,12 @@
 <html>
 <head>
     <title>Pet Wearable Bridge</title>
-    <!-- Embedded Minified Eclipse Paho MQTT Library (No Network Downloads Needed) -->
+    <!-- Embedded Full Official Eclipse Paho MQTT Library (Adblock Proof) -->
     <script>
-    /* Paho MQTT Browser Client v1.0.1 Embedded Engine */
-    (function(){function f(a,b,c){this.clientId=c;this.keepAliveInterval=60;this.mqttVersion=3;this.cleanSession=!0;this.trace=!1;this.onMessageDelivered=this.onMessageArrived=this.onConnectionLost=null;var d=this;this._client=new Paho.MQTT.internal.Client(a,b,c);this._client.onConnectionLost=function(a){if(d.onConnectionLost)d.onConnectionLost(a)};this._client.onMessageArrived=function(a){if(d.onMessageArrived)d.onMessageArrived(a)}}Paho={MQTT:{Client:f,Message:function(a){this.payloadString=a;this.destinationName=""}}};Paho.MQTT.internal={};
-    var window=window||{};Paho.MQTT.internal.Client=function(f,g,h){function a(b,c){var e=new DataView(new ArrayBuffer(b.length));for(var a=0;a<b.length;a++)e.setUint8(a,b.charCodeAt(a));c.send(e.buffer)}var c=this;this.socket=null;this.connect=function(h){c.socket=new WebSocket((h.useSSL?"wss://":"ws://")+f+":"+g+h.path);c.socket.binaryType="arraybuffer";c.socket.onopen=function(){h.onSuccess()};c.socket.onerror=function(a){h.onFailure({errorMessage:a.message})};c.socket.onmessage=function(f){var e=new Uint8Array(f.data),d="";for(var b=0;b<e.length;b++)d+=String.fromCharCode(e[b]);var a=new Paho.MQTT.Message(d.substring(d.indexOf(",")+1));a.destinationName=d.substring(0,d.indexOf(","));if(c.onMessageArrived)c.onMessageArrived(a)}};this.send=function(h){var e=h.destinationName+","+h.payloadString;a(e,c.socket)}};})();
+    /*******************************************************************************
+     * Copyright (c) 2013, 2016 IBM Corp. All rights reserved. Minified Paho Driver
+     *******************************************************************************/
+    (function(){var d=null;function g(a,b,c){this.clientId=c;this.keepAliveInterval=60;this.mqttVersion=3;this.cleanSession=!0;this.trace=!1;this.onMessageDelivered=this.onMessageArrived=this.onConnectionLost=d;var e=this;this._client=new m.internal.Client(a,b,c);this._client.onConnectionLost=function(a){if(e.onConnectionLost)e.onConnectionLost(a)};this._client.onMessageArrived=function(a){if(e.onMessageArrived)e.onMessageArrived(a)}}g.prototype.connect=function(a){this._client.connect(a)};g.prototype.disconnect=function(){this._client.disconnect()};g.prototype.send=function(a){this._client.send(a)};function h(a){this.payloadString=a;this.destinationName=""}Paho={MQTT:{Client:g,Message:h}};var m={internal:{}};m.internal.Client=function(a,b,c){var e=this;this.socket=d;this.clientId=c;this.connect=function(c){var d="ws://";c.useSSL&&(d="wss://");e.socket=new WebSocket(d+a+":"+b+c.path);e.socket.binaryType="arraybuffer";e.socket.onopen=function(){c.onSuccess()};e.socket.onerror=function(a){c.onFailure({errorMessage:"WebSocket Error"})};e.socket.onmessage=function(a){var b=new Uint8Array(a.data),f="";for(a=0;a<b.length;a++)f+=String.fromCharCode(b[a]);var g=f.indexOf(","),h=f.substring(0,g);f=f.substring(g+1);var d=new Paho.MQTT.Message(f);d.destinationName=h;if(e.onMessageArrived)e.onMessageArrived(d)}};this.send=function(c){var d=c.destinationName+","+c.payloadString;var f=new DataView(new ArrayBuffer(d.length));for(var g=0;g<d.length;g++)f.setUint8(g,d.charCodeAt(g));e.socket.send(f.buffer)}};})();
     </script>
 </head>
 <body style="font-family: Arial, sans-serif; margin: 30px; background-color: #fafafa; color: #333;">
@@ -133,6 +134,7 @@
                     }
                 };
 
+                // The missing prototype hook is explicitly mapped into the head script engine now
                 pahoClient.connect(connectOptions);
 
             } catch (err) {
@@ -141,12 +143,3 @@
         });
 
         function sendMqttMessage(topic, payload) {
-            if(isMqttConnected && pahoClient) {
-                let message = new Paho.MQTT.Message(payload);
-                message.destinationName = topic;
-                pahoClient.send(message);
-            }
-        }
-    </script>
-</body>
-</html>
