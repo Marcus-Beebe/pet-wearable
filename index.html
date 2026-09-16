@@ -2,13 +2,6 @@
 <html>
 <head>
     <title>Pet Wearable Bridge</title>
-    <!-- Embedded Full Official Eclipse Paho MQTT Library (Adblock Proof) -->
-    <script>
-    /*******************************************************************************
-     * Copyright (c) 2013, 2016 IBM Corp. All rights reserved. Minified Paho Driver
-     *******************************************************************************/
-    (function(){var d=null;function g(a,b,c){this.clientId=c;this.keepAliveInterval=60;this.mqttVersion=3;this.cleanSession=!0;this.trace=!1;this.onMessageDelivered=this.onMessageArrived=this.onConnectionLost=d;var e=this;this._client=new m.internal.Client(a,b,c);this._client.onConnectionLost=function(a){if(e.onConnectionLost)e.onConnectionLost(a)};this._client.onMessageArrived=function(a){if(e.onMessageArrived)e.onMessageArrived(a)}}g.prototype.connect=function(a){this._client.connect(a)};g.prototype.disconnect=function(){this._client.disconnect()};g.prototype.send=function(a){this._client.send(a)};function h(a){this.payloadString=a;this.destinationName=""}Paho={MQTT:{Client:g,Message:h}};var m={internal:{}};m.internal.Client=function(a,b,c){var e=this;this.socket=d;this.clientId=c;this.connect=function(c){var d="ws://";c.useSSL&&(d="wss://");e.socket=new WebSocket(d+a+":"+b+c.path);e.socket.binaryType="arraybuffer";e.socket.onopen=function(){c.onSuccess()};e.socket.onerror=function(a){c.onFailure({errorMessage:"WebSocket Error"})};e.socket.onmessage=function(a){var b=new Uint8Array(a.data),f="";for(a=0;a<b.length;a++)f+=String.fromCharCode(b[a]);var g=f.indexOf(","),h=f.substring(0,g);f=f.substring(g+1);var d=new Paho.MQTT.Message(f);d.destinationName=h;if(e.onMessageArrived)e.onMessageArrived(d)}};this.send=function(c){var d=c.destinationName+","+c.payloadString;var f=new DataView(new ArrayBuffer(d.length));for(var g=0;g<d.length;g++)f.setUint8(g,d.charCodeAt(g));e.socket.send(f.buffer)}};})();
-    </script>
 </head>
 <body style="font-family: Arial, sans-serif; margin: 30px; background-color: #fafafa; color: #333;">
     <div style="max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
@@ -31,9 +24,11 @@
         <div id="log" style="background: #222; color: #00ff00; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; font-size: 12px; height: 180px; overflow-y: auto;">System ready...</div>
     </div>
 
-    <script>
-        let pahoClient = null;
-        let isMqttConnected = false;
+    <!-- Modern ES Modules Import - Safely scoped and modern browser compliant -->
+    <script type="module">
+        import mqtt from 'https://jsdelivr.net';
+
+        let mqttClient = null;
         const NORDIC_UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
         const UART_TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
@@ -59,87 +54,83 @@
 
             document.getElementById('status').innerText = "Connecting to Adafruit IO Broker...";
             document.getElementById('status').style.color = "#ff9900";
-            updateLog(`Initiating Self-Contained WebSocket connection to io.adafruit.com...`);
+            updateLog(`Initiating native ESM WebSocket connection to ://adafruit.com...`);
             
             try {
-                const clientId = "xiao_gateway_" + Math.random().toString(16).substr(2, 8);
-                pahoClient = new Paho.MQTT.Client("io.adafruit.com", 443, clientId);
-
-                const connectOptions = {
-                    useSSL: true,
-                    userName: user,
+                // Connect via standardized MQTT over Secure WebSockets
+                mqttClient = mqtt.connect(`wss://://adafruit.com:443/mqtt`, {
+                    username: user,
                     password: key,
-                    path: "/mqtt",
-                    onSuccess: async () => {
-                        isMqttConnected = true;
-                        document.getElementById('status').innerText = "MQTT Online! Prompting for BLE pairing...";
-                        document.getElementById('status').style.color = "blue";
-                        updateLog("Authenticated with Adafruit IO. Opening browser pairing menu...");
+                    connectTimeout: 5000
+                });
+
+                mqttClient.on('error', (err) => {
+                    document.getElementById('status').innerText = "MQTT Connection Failed";
+                    document.getElementById('status').style.color = "red";
+                    updateLog(`MQTT Error: ${err.message}. Check your key or internet.`);
+                });
+
+                mqttClient.on('connect', async () => {
+                    document.getElementById('status').innerText = "MQTT Online! Prompting for BLE pairing...";
+                    document.getElementById('status').style.color = "blue";
+                    updateLog("Authenticated with Adafruit IO. Opening browser pairing menu...");
+                    
+                    try {
+                        const device = await navigator.bluetooth.requestDevice({
+                            filters: [{ namePrefix: 'XIAO' }, { services: [NORDIC_UART_SERVICE_UUID] }],
+                            optionalServices: [NORDIC_UART_SERVICE_UUID]
+                        });
+
+                        updateLog(`Connected to Bluetooth hardware target: ${device.name}`);
+                        const server = await device.gatt.connect();
+                        const service = await server.getPrimaryService(NORDIC_UART_SERVICE_UUID);
+                        const characteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
                         
-                        try {
-                            const device = await navigator.bluetooth.requestDevice({
-                                filters: [{ namePrefix: 'XIAO' }, { services: [NORDIC_UART_SERVICE_UUID] }],
-                                optionalServices: [NORDIC_UART_SERVICE_UUID]
-                            });
+                        document.getElementById('status').innerText = "ACTIVE SYNC PIPELINE ONLINE";
+                        document.getElementById('status').style.color = "green";
+                        updateLog("Sync complete! Relaying stream to Adafruit IO feeds...");
+                        
+                        let decoder = new TextDecoder();
+                        let bufferString = "";
 
-                            updateLog(`Connected to Bluetooth hardware target: ${device.name}`);
-                            const server = await device.gatt.connect();
-                            const service = await server.getPrimaryService(NORDIC_UART_SERVICE_UUID);
-                            const characteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+                        await characteristic.startNotifications();
+                        characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                            let chunk = decoder.decode(event.target.value);
+                            bufferString += chunk;
                             
-                            document.getElementById('status').innerText = "ACTIVE SYNC PIPELINE ONLINE";
-                            document.getElementById('status').style.color = "green";
-                            updateLog("Sync complete! Relaying stream to Adafruit IO feeds...");
-                            
-                            let decoder = new TextDecoder();
-                            let bufferString = "";
-
-                            await characteristic.startNotifications();
-                            characteristic.addEventListener('characteristicvaluechanged', (event) => {
-                                let chunk = decoder.decode(event.target.value);
-                                bufferString += chunk;
+                            if (bufferString.includes('\n')) {
+                                let lines = bufferString.split('\n');
+                                let completeLine = lines[0].trim();
+                                bufferString = lines.slice(1).join('\n');
                                 
-                                if (bufferString.includes('\n')) {
-                                    let lines = bufferString.split('\n');
-                                    let completeLine = lines[0].trim();
-                                    bufferString = lines.slice(1).join('\n');
-                                    
-                                    if(completeLine) {
-                                        let items = completeLine.split(',');
-                                        if(items.length === 3) {
-                                            let voltage = items[0].trim();
-                                            let rate = items[1].trim();
-                                            let activity = items[2].trim();
+                                if(completeLine) {
+                                    let items = completeLine.split(',');
+                                    if(items.length === 3) {
+                                        let voltage = items[0].trim();
+                                        let rate = items[1].trim();
+                                        let activity = items[2].trim();
 
-                                            sendMqttMessage(`${user}/feeds/pet-voltage`, voltage);
-                                            sendMqttMessage(`${user}/feeds/pet-rate`, rate);
-                                            sendMqttMessage(`${user}/feeds/pet-activity`, activity);
-                                            
-                                            updateLog(`Relayed data -> Volt: ${voltage}mV | Rate: ${rate}mV/s | State: ${activity}`);
-                                        }
+                                        mqttClient.publish(`${user}/feeds/pet-voltage`, voltage);
+                                        mqttClient.publish(`${user}/feeds/pet-rate`, rate);
+                                        mqttClient.publish(`${user}/feeds/pet-activity`, activity);
+                                        
+                                        updateLog(`Relayed data -> Volt: ${voltage}mV | Rate: ${rate}mV/s | State: ${activity}`);
                                     }
                                 }
-                            });
+                            }
+                        });
 
-                        } catch (bleErr) {
-                            document.getElementById('status').innerText = "Bluetooth Cancelled";
-                            document.getElementById('status').style.color = "red";
-                            updateLog(`Bluetooth Error: ${bleErr.message}`);
-                        }
-                    },
-                    onFailure: (err) => {
-                        document.getElementById('status').innerText = "MQTT Connection Failed";
+                    } catch (bleErr) {
+                        document.getElementById('status').innerText = "Bluetooth Cancelled";
                         document.getElementById('status').style.color = "red";
-                        updateLog(`Adafruit IO connection error.`);
+                        updateLog(`Bluetooth Error: ${bleErr.message}`);
                     }
-                };
-
-                // The missing prototype hook is explicitly mapped into the head script engine now
-                pahoClient.connect(connectOptions);
+                });
 
             } catch (err) {
                 updateLog(`Thread failure: ${err.message}`);
             }
         });
-
-        function sendMqttMessage(topic, payload) {
+    </script>
+</body>
+</html>
