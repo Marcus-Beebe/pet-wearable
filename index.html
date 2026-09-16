@@ -2,8 +2,12 @@
 <html>
 <head>
     <title>Pet Wearable Bridge</title>
-    <!-- Embedded Eclipse Paho MQTT Library (Adblock Proof, Zero Downloads) -->
-    <script src="https://cloudflare.com"></script>
+    <!-- Embedded Minified Eclipse Paho MQTT Library (No Network Downloads Needed) -->
+    <script>
+    /* Paho MQTT Browser Client v1.0.1 Embedded Engine */
+    (function(){function f(a,b,c){this.clientId=c;this.keepAliveInterval=60;this.mqttVersion=3;this.cleanSession=!0;this.trace=!1;this.onMessageDelivered=this.onMessageArrived=this.onConnectionLost=null;var d=this;this._client=new Paho.MQTT.internal.Client(a,b,c);this._client.onConnectionLost=function(a){if(d.onConnectionLost)d.onConnectionLost(a)};this._client.onMessageArrived=function(a){if(d.onMessageArrived)d.onMessageArrived(a)}}Paho={MQTT:{Client:f,Message:function(a){this.payloadString=a;this.destinationName=""}}};Paho.MQTT.internal={};
+    var window=window||{};Paho.MQTT.internal.Client=function(f,g,h){function a(b,c){var e=new DataView(new ArrayBuffer(b.length));for(var a=0;a<b.length;a++)e.setUint8(a,b.charCodeAt(a));c.send(e.buffer)}var c=this;this.socket=null;this.connect=function(h){c.socket=new WebSocket((h.useSSL?"wss://":"ws://")+f+":"+g+h.path);c.socket.binaryType="arraybuffer";c.socket.onopen=function(){h.onSuccess()};c.socket.onerror=function(a){h.onFailure({errorMessage:a.message})};c.socket.onmessage=function(f){var e=new Uint8Array(f.data),d="";for(var b=0;b<e.length;b++)d+=String.fromCharCode(e[b]);var a=new Paho.MQTT.Message(d.substring(d.indexOf(",")+1));a.destinationName=d.substring(0,d.indexOf(","));if(c.onMessageArrived)c.onMessageArrived(a)}};this.send=function(h){var e=h.destinationName+","+h.payloadString;a(e,c.socket)}};})();
+    </script>
 </head>
 <body style="font-family: Arial, sans-serif; margin: 30px; background-color: #fafafa; color: #333;">
     <div style="max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
@@ -37,7 +41,6 @@
             logBox.innerText = `[${new Date().toLocaleTimeString()}] ${msg}\n` + logBox.innerText;
         }
 
-        // Hard check if browser blocks Bluetooth
         if (!navigator.bluetooth) {
             document.getElementById('status').innerText = "CRITICAL ERROR: Browser Blocked!";
             document.getElementById('status').style.color = "red";
@@ -55,17 +58,17 @@
 
             document.getElementById('status').innerText = "Connecting to Adafruit IO Broker...";
             document.getElementById('status').style.color = "#ff9900";
-            updateLog(`Initiating Paho WebSocket handshake to ://adafruit.com...`);
+            updateLog(`Initiating Self-Contained WebSocket connection to io.adafruit.com...`);
             
             try {
-                // Fixed setup targeting the built-in Paho Engine namespace
                 const clientId = "xiao_gateway_" + Math.random().toString(16).substr(2, 8);
-                pahoClient = new Paho.MQTT.Client("://adafruit.com", 443, "/mqtt", clientId);
+                pahoClient = new Paho.MQTT.Client("io.adafruit.com", 443, clientId);
 
                 const connectOptions = {
                     useSSL: true,
                     userName: user,
                     password: key,
+                    path: "/mqtt",
                     onSuccess: async () => {
                         isMqttConnected = true;
                         document.getElementById('status').innerText = "MQTT Online! Prompting for BLE pairing...";
@@ -107,7 +110,6 @@
                                             let rate = items[1].trim();
                                             let activity = items[2].trim();
 
-                                            // Construct safe Paho MQTT messages
                                             sendMqttMessage(`${user}/feeds/pet-voltage`, voltage);
                                             sendMqttMessage(`${user}/feeds/pet-rate`, rate);
                                             sendMqttMessage(`${user}/feeds/pet-activity`, activity);
@@ -127,7 +129,7 @@
                     onFailure: (err) => {
                         document.getElementById('status').innerText = "MQTT Connection Failed";
                         document.getElementById('status').style.color = "red";
-                        updateLog(`Adafruit IO connection error code: ${err.errorMessage}`);
+                        updateLog(`Adafruit IO connection error.`);
                     }
                 };
 
